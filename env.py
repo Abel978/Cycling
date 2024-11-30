@@ -1,8 +1,7 @@
 import numpy as np
 from copy import deepcopy
-
 from itertools import chain
-
+from helper import custom_flatten as c_flatten
 
 action_mapping = {
     0: 0,           # cost: 0
@@ -78,27 +77,28 @@ class OneStepEnv:
         sollten zu einer auszahlung von 0.5, 0.5, 0.5 und 0 fuehren.
         ebenso wie wenn in der situation e = [[2], [1,2], [0]] waere. (Ob das so sinnvoll ist weiss ich auch nicht)
         """
-        raise NotImplementedError
         
 
-        # e_flat = self.custom_flatten(S.e)
+        e_flat = self.custom_flatten(S.e)
         p_flat = self.custom_flatten(S.p)
 
-        lead_pos = max(p_flat)
+        leaders = np.array([1 if p == max(p_flat) else 0 for p in p_flat])
+        leading_team_index = [max(x) for x in self.custom_reshape(leaders, S.shape)]
 
-        inds = self.find_indices(lead_pos, S.p)
+        es = [e_flat[i] if leaders[i] == 1 else -1 for i in range(len(e_flat))]
+        team_es = [max(x) for x in self.custom_reshape(es, S.shape)]
+        # -1 if not leading, else the energy level of the agent who leads
 
-        r = np.zeros(sum(self.shape)) 
+        if sum([x for x in team_es if x >=0]) == 0:
+            team_rewards = [1 / sum(leading_team_index) if x == 1 else 0 for x in leading_team_index]
+        
+        else:
+            team_rewards = [e*i/sum([x for x in team_es if x >=0]) for e, i in zip(team_es, leading_team_index)]
 
-        es = [S.e[ind[0]][ind[1]] for ind in inds]
-
-        for ind in inds:
-            if sum(es) == 0:
-                # nobody has energy left, all obtain the same reward
-                r[lazy_indexing[ind]] = 1 / len(inds)
-            else:
-                r[lazy_indexing[ind]] = S.e[ind[0]][ind[1]] / sum(es)
-
+        r = []
+        for j, l in enumerate(S.shape):
+            r = r + [team_rewards[j]] * l
+        
         return r
 
     @staticmethod
@@ -117,7 +117,7 @@ class OneStepEnv:
     @staticmethod
     def custom_flatten(arr):
 
-        return np.array(list(chain.from_iterable(arr)))
+        return c_flatten(arr)
 
     def step(self, a):
         """
